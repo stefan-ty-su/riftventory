@@ -1,7 +1,7 @@
 # backend/app/models/inventory.py
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 
 
@@ -68,9 +68,7 @@ class InventoryCardResponse(InventoryCardBase):
     card_rarity: Optional[str] = None
     set_id: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 
 class InventoryResponse(InventoryBase):
     """Full inventory response."""
@@ -79,8 +77,7 @@ class InventoryResponse(InventoryBase):
     created_at: Optional[datetime] = None
     last_updated: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InventoryWithCardsResponse(InventoryResponse):
