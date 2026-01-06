@@ -1,7 +1,7 @@
 # backend/app/models/inventory.py
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, computed_field
 from typing import Optional
 
 
@@ -12,6 +12,7 @@ class InventoryCardBase(BaseModel):
     card_id: str
     quantity: int = Field(default=0, ge=0, description="Number of copies owned")
     is_tradeable: bool = Field(default=False, description="Whether card is available for trade")
+    locked_quantity: int = Field(default=0, ge=0, description="Cards locked in pending trades")
 
 
 class InventoryBase(BaseModel):
@@ -61,7 +62,7 @@ class InventoryCardAdjust(BaseModel):
 class InventoryCardResponse(InventoryCardBase):
     """Full card entry with inventory context."""
     inventory_id: UUID
-    
+
     # Joined card data (populated when fetching with card details)
     card_name: Optional[str] = None
     card_image_url: Optional[str] = None
@@ -69,6 +70,12 @@ class InventoryCardResponse(InventoryCardBase):
     set_id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def available_quantity(self) -> int:
+        """Cards available for trading (not locked in escrow)."""
+        return self.quantity - self.locked_quantity
 
 class InventoryResponse(InventoryBase):
     """Full inventory response."""

@@ -77,6 +77,7 @@ class TestQuantityEdgeCases:
             "card_id": sample_card_id,
             "quantity": 3,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }).execute()
 
         # Adjust by -3 to reach zero
@@ -106,6 +107,7 @@ class TestQuantityEdgeCases:
             "card_id": sample_card_id,
             "quantity": large_quantity,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }).execute()
 
         # Verify via stats
@@ -132,6 +134,7 @@ class TestQuantityEdgeCases:
             "card_id": sample_card_id,
             "quantity": 10,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }).execute()
 
         # Make rapid adjustments
@@ -190,6 +193,7 @@ class TestFilterFunctionality:
                 "card_id": card_id,
                 "quantity": 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Get all cards first to find a set_id
@@ -224,6 +228,7 @@ class TestFilterFunctionality:
                 "card_id": card_id,
                 "quantity": 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Get all cards first to find a rarity
@@ -258,6 +263,7 @@ class TestFilterFunctionality:
                 "card_id": card_id,
                 "quantity": 1,
                 "is_tradeable": i % 2 == 0,  # Even indices are tradeable
+                "locked_quantity": 0,
             }).execute()
 
         # Filter by tradeable
@@ -283,6 +289,7 @@ class TestFilterFunctionality:
                 "card_id": card_id,
                 "quantity": 1,
                 "is_tradeable": i % 2 == 0,  # Even indices are tradeable
+                "locked_quantity": 0,
             }).execute()
 
         # Filter by non-tradeable
@@ -309,6 +316,7 @@ class TestFilterFunctionality:
                 "card_id": card_id,
                 "quantity": quantities[i],
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Filter by min_quantity=5
@@ -337,6 +345,7 @@ class TestFilterFunctionality:
                 "card_id": card_id,
                 "quantity": (i + 1) * 2,  # 2, 4, 6, 8, 10
                 "is_tradeable": i % 2 == 0,  # 0, 2, 4 are tradeable
+                "locked_quantity": 0,
             }).execute()
 
         # Filter by tradeable AND min_quantity

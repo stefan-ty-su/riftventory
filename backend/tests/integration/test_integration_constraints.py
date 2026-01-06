@@ -33,6 +33,7 @@ class TestForeignKeyConstraints:
             "card_id": "nonexistent_card_xyz",
             "quantity": 1,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }
 
         with pytest.raises(APIError) as exc_info:
@@ -49,6 +50,7 @@ class TestForeignKeyConstraints:
             "card_id": sample_card_id,
             "quantity": 1,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }
 
         with pytest.raises(APIError) as exc_info:
@@ -73,6 +75,7 @@ class TestForeignKeyConstraints:
             "card_id": valid_card_id,
             "quantity": 1,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }).execute()
 
         # Try to add invalid card - should fail with FK error
@@ -82,6 +85,7 @@ class TestForeignKeyConstraints:
                 "card_id": "invalid_card_id_xyz",
                 "quantity": 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         assert exc_info.value.code == "23503"
@@ -109,6 +113,7 @@ class TestCascadeDeletes:
                 "card_id": card_id,
                 "quantity": 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Verify cards were added
@@ -154,6 +159,7 @@ class TestCascadeDeletes:
                     "card_id": card_id,
                     "quantity": 1,
                     "is_tradeable": False,
+                    "locked_quantity": 0,
                 }).execute()
 
         # Verify setup
@@ -191,6 +197,7 @@ class TestCascadeDeletes:
                 "card_id": card_id,
                 "quantity": 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Remove all cards

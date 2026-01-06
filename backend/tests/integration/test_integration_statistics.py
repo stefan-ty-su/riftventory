@@ -24,6 +24,7 @@ class TestStatisticsAccuracy:
                 "card_id": card_id,
                 "quantity": quantities[i],
                 "is_tradeable": i % 2 == 0,  # 0 and 2 are tradeable
+                "locked_quantity": 0,
             }).execute()
 
         # Get stats from API
@@ -49,6 +50,7 @@ class TestStatisticsAccuracy:
                 "card_id": card_id,
                 "quantity": i + 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Get stats from API
@@ -73,6 +75,7 @@ class TestStatisticsAccuracy:
                 "card_id": card_id,
                 "quantity": (i + 1) * 2,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Get stats from API
@@ -101,6 +104,7 @@ class TestStatisticsAccuracy:
             "card_id": sample_card_ids[0],
             "quantity": 5,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }).execute()
 
         # Get updated stats
@@ -123,6 +127,7 @@ class TestStatisticsAccuracy:
                 "card_id": card_id,
                 "quantity": 2,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Get stats before removal
@@ -158,6 +163,7 @@ class TestJoinAccuracy:
             "card_id": card_id,
             "quantity": 3,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }).execute()
 
         # Get cards with details
@@ -191,6 +197,7 @@ class TestJoinAccuracy:
                 "card_id": card_id,
                 "quantity": quantities[i],
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Get inventory with cards
@@ -214,6 +221,7 @@ class TestJoinAccuracy:
             "card_id": sample_card_ids[0],
             "quantity": 1,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }).execute()
 
         # Get inventory with cards
@@ -253,6 +261,7 @@ class TestJoinAccuracy:
                 "card_id": sample_card_ids[0],
                 "quantity": 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
             }).execute()
 
         # Get cards from first inventory

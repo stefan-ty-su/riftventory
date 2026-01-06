@@ -16,6 +16,7 @@ class TestGetInventoryCards:
                 "card_id": "card1",
                 "quantity": 3,
                 "is_tradeable": True,
+                "locked_quantity": 0,
                 "card": {
                     "card_name": "Card One",
                     "card_image_url": "https://example.com/card1.png",
@@ -28,6 +29,7 @@ class TestGetInventoryCards:
                 "card_id": "card2",
                 "quantity": 1,
                 "is_tradeable": False,
+                "locked_quantity": 0,
                 "card": {
                     "card_name": "Card Two",
                     "card_image_url": "https://example.com/card2.png",
@@ -54,6 +56,7 @@ class TestGetInventoryCards:
             "card_id": "card1",
             "quantity": 3,
             "is_tradeable": True,
+            "locked_quantity": 0,
             "card": {
                 "card_name": "Card One",
                 "card_image_url": "https://example.com/card1.png",
@@ -78,6 +81,7 @@ class TestGetInventoryCards:
             "card_id": "card1",
             "quantity": 3,
             "is_tradeable": True,
+            "locked_quantity": 0,
             "card": {
                 "card_name": "Card One",
                 "card_image_url": "https://example.com/card1.png",
@@ -102,6 +106,7 @@ class TestGetInventoryCards:
             "card_id": "card1",
             "quantity": 3,
             "is_tradeable": True,
+            "locked_quantity": 0,
             "card": {
                 "card_name": "Card One",
                 "card_image_url": "https://example.com/card1.png",
@@ -126,6 +131,7 @@ class TestGetInventoryCards:
             "card_id": "card1",
             "quantity": 5,
             "is_tradeable": True,
+            "locked_quantity": 0,
             "card": {
                 "card_name": "Card One",
                 "card_image_url": "https://example.com/card1.png",
@@ -171,6 +177,7 @@ class TestGetInventoryWithCards:
                 "card_id": "card1",
                 "quantity": 3,
                 "is_tradeable": True,
+                "locked_quantity": 0,
                 "card": {
                     "card_name": "Card One",
                     "card_image_url": "https://example.com/card1.png",
@@ -183,6 +190,7 @@ class TestGetInventoryWithCards:
                 "card_id": "card2",
                 "quantity": 2,
                 "is_tradeable": False,
+                "locked_quantity": 0,
                 "card": {
                     "card_name": "Card Two",
                     "card_image_url": "https://example.com/card2.png",
@@ -234,6 +242,7 @@ class TestAddCardToInventory:
             "card_id": "card123",
             "quantity": 2,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         # Mock update inventory timestamp
@@ -269,6 +278,7 @@ class TestAddCardToInventory:
             "card_id": "card123",
             "quantity": 3,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         # Mock update response
@@ -278,6 +288,7 @@ class TestAddCardToInventory:
             "card_id": "card123",
             "quantity": 5,  # 3 + 2
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         # Mock update inventory timestamp
@@ -349,6 +360,7 @@ class TestAddCardsBulk:
             "card_id": "card1",
             "quantity": 2,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         insert_response_2 = Mock()
@@ -357,6 +369,7 @@ class TestAddCardsBulk:
             "card_id": "card2",
             "quantity": 3,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }]
 
         timestamp_response = Mock()
@@ -392,6 +405,7 @@ class TestAddCardsBulk:
             "card_id": "card1",
             "quantity": 5,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         update_response = Mock()
@@ -400,6 +414,7 @@ class TestAddCardsBulk:
             "card_id": "card1",
             "quantity": 7,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         # Second card is new
@@ -412,6 +427,7 @@ class TestAddCardsBulk:
             "card_id": "card2",
             "quantity": 2,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }]
 
         timestamp_response = Mock()
@@ -450,6 +466,7 @@ class TestUpdateInventoryCard:
             "card_id": "card123",
             "quantity": 5,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         timestamp_response = Mock()
@@ -476,6 +493,7 @@ class TestUpdateInventoryCard:
             "card_id": "card123",
             "quantity": 3,
             "is_tradeable": False,
+            "locked_quantity": 0,
         }]
 
         timestamp_response = Mock()
@@ -533,6 +551,7 @@ class TestAdjustCardQuantity:
             "card_id": "card123",
             "quantity": 3,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         update_response = Mock()
@@ -541,6 +560,7 @@ class TestAdjustCardQuantity:
             "card_id": "card123",
             "quantity": 5,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         timestamp_response = Mock()
@@ -571,6 +591,7 @@ class TestAdjustCardQuantity:
             "card_id": "card123",
             "quantity": 5,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         update_response = Mock()
@@ -579,6 +600,7 @@ class TestAdjustCardQuantity:
             "card_id": "card123",
             "quantity": 3,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         timestamp_response = Mock()
@@ -609,6 +631,7 @@ class TestAdjustCardQuantity:
             "card_id": "card123",
             "quantity": 2,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         delete_response = Mock()
@@ -642,6 +665,7 @@ class TestAdjustCardQuantity:
             "card_id": "card123",
             "quantity": 2,
             "is_tradeable": True,
+            "locked_quantity": 0,
         }]
 
         mock_supabase_client.execute.return_value = current_response
