@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+from typing import Optional, Any
 
 
 # ============== Enums ==============
@@ -11,68 +11,53 @@ from typing import Optional
 class TradeStatus(str, Enum):
     """Trade lifecycle states."""
     PENDING = "pending"
-    COUNTERED = "countered"
     ACCEPTED = "accepted"
-    CONFIRMED = "confirmed"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    REJECTED = "rejected"
+    COUNTERED = "countered"  # Original trade was counter-offered
+
+
+class TradeHistoryAction(str, Enum):
+    """Actions that can be recorded in trade history."""
+    CREATED = "created"
+    ACCEPTED = "accepted"
+    COUNTER_OFFERED = "counter_offered"
+    CONFIRMED = "confirmed"
+    UNCONFIRMED = "unconfirmed"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    REJECTED = "rejected"
     EXPIRED = "expired"
-    FAILED = "failed"
-
-
-class TradeDirection(str, Enum):
-    """Direction of card in trade."""
-    OFFER = "offer"      # Cards being given
-    REQUEST = "request"  # Cards being requested
-
-
-class TradeAction(str, Enum):
-    """Actions that can be taken on a trade."""
-    CREATE = "create"
-    COUNTER = "counter"
-    ACCEPT = "accept"
-    CONFIRM = "confirm"
-    CANCEL = "cancel"
-    EXPIRE = "expire"
-    COMPLETE = "complete"
-    FAIL = "fail"
 
 
 # ============== Base Schemas ==============
 
-class TradeItemBase(BaseModel):
-    """Base schema for a trade item."""
-    inventory_id: UUID
+class TradeCardItem(BaseModel):
+    """A card item in a trade (escrow or recipient)."""
     card_id: str
     quantity: int = Field(default=1, ge=1, description="Number of copies to trade")
 
 
 # ============== Create Schemas ==============
 
-class TradeItemCreate(TradeItemBase):
-    """Schema for creating a trade item."""
-    pass
-
-
 class TradeCreate(BaseModel):
     """Schema for creating a new trade offer."""
-    recipient_id: str = Field(description="User ID of the trade recipient")
-    offered_cards: list[TradeItemCreate] = Field(
+    recipient_user_id: str = Field(description="User ID of the trade recipient")
+    initiator_inventory_id: UUID = Field(description="Inventory the initiator is trading from")
+    recipient_inventory_id: UUID = Field(description="Inventory the recipient will trade from")
+    escrow_cards: list[TradeCardItem] = Field(
         min_length=1,
-        description="Cards the initiator is offering"
+        description="Cards the initiator is offering (goes to escrow)"
     )
-    requested_cards: list[TradeItemCreate] = Field(
+    requested_cards: list[TradeCardItem] = Field(
         default=[],
-        description="Cards the initiator wants in return"
+        description="Cards the initiator wants from recipient"
     )
-    initiator_dest_inventory_id: UUID = Field(
-        description="Inventory where initiator will receive requested cards"
-    )
-    expires_in_hours: int = Field(
-        default=72,
-        ge=1,
-        le=168,
-        description="Hours until trade expires (1-168)"
+    message: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional message to recipient"
     )
 
 
@@ -80,24 +65,7 @@ class TradeCreate(BaseModel):
 
 class TradeAccept(BaseModel):
     """Schema for accepting a trade offer."""
-    recipient_dest_inventory_id: UUID = Field(
-        description="Inventory where recipient will receive offered cards"
-    )
-
-
-class TradeCounter(BaseModel):
-    """Schema for countering a trade offer."""
-    offered_cards: list[TradeItemCreate] = Field(
-        min_length=1,
-        description="Cards being offered in counter"
-    )
-    requested_cards: list[TradeItemCreate] = Field(
-        default=[],
-        description="Cards being requested in counter"
-    )
-    dest_inventory_id: UUID = Field(
-        description="Inventory where counter-offerer will receive cards"
-    )
+    pass  # No additional data needed - recipient inventory already specified
 
 
 class TradeCancel(BaseModel):
@@ -109,18 +77,27 @@ class TradeCancel(BaseModel):
     )
 
 
+class TradeCounterOffer(BaseModel):
+    """Schema for creating a counter-offer to a trade."""
+    escrow_cards: list[TradeCardItem] = Field(
+        min_length=1,
+        description="Cards the counter-offerer will give"
+    )
+    requested_cards: list[TradeCardItem] = Field(
+        default=[],
+        description="Cards the counter-offerer wants in return"
+    )
+    message: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional message to the other party"
+    )
+
+
 # ============== Response Schemas ==============
 
-class TradeItemResponse(TradeItemBase):
-    """Full trade item response."""
-    trade_item_id: UUID
-    trade_id: UUID
-    owner_id: str
-    direction: TradeDirection
-    is_locked: bool = False
-    locked_at: Optional[datetime] = None
-
-    # Joined card data
+class TradeCardResponse(TradeCardItem):
+    """Trade card with joined card details."""
     card_name: Optional[str] = None
     card_image_url: Optional[str] = None
     card_rarity: Optional[str] = None
@@ -132,31 +109,39 @@ class TradeItemResponse(TradeItemBase):
 class TradeResponse(BaseModel):
     """Full trade response."""
     trade_id: UUID
-    initiator_id: str
-    recipient_id: str
+    initiator_user_id: str
+    initiator_inventory_id: UUID
+    recipient_user_id: str
+    recipient_inventory_id: UUID
     status: TradeStatus
+    message: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
-    expires_at: datetime
-    initiator_confirmed: bool
-    recipient_confirmed: bool
-    initiator_dest_inventory_id: Optional[UUID] = None
-    recipient_dest_inventory_id: Optional[UUID] = None
-    completed_at: Optional[datetime] = None
-    cancelled_at: Optional[datetime] = None
-    cancel_reason: Optional[str] = None
+
+    # Counter-offer chain tracking
+    root_trade_id: Optional[UUID] = None
+    parent_trade_id: Optional[UUID] = None
+    counter_count: int = 0
+
+    # Confirmation tracking
+    initiator_confirmed: bool = False
+    initiator_confirmed_at: Optional[datetime] = None
+    recipient_confirmed: bool = False
+    recipient_confirmed_at: Optional[datetime] = None
+
+    # Resolution
+    resolved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class TradeWithItemsResponse(TradeResponse):
-    """Trade response with all items included."""
-    offered_items: list[TradeItemResponse] = []
-    requested_items: list[TradeItemResponse] = []
+class TradeWithCardsResponse(TradeResponse):
+    """Trade response with all card items included."""
+    escrow_cards: list[TradeCardResponse] = []
+    requested_cards: list[TradeCardResponse] = []
 
     # Joined user data
-    initiator_name: Optional[str] = None
-    recipient_name: Optional[str] = None
+    initiator_user_name: Optional[str] = None
+    recipient_user_name: Optional[str] = None
 
 
 # ============== Query/Filter Schemas ==============
@@ -169,10 +154,6 @@ class TradeFilters(BaseModel):
         pattern="^(initiator|recipient|any)$",
         description="Filter by user's role in trade"
     )
-    include_expired: bool = Field(
-        default=False,
-        description="Include expired trades"
-    )
 
 
 class TradeListResponse(BaseModel):
@@ -183,25 +164,6 @@ class TradeListResponse(BaseModel):
     page_size: int
 
 
-# ============== History Schemas ==============
-
-class TradeHistoryResponse(BaseModel):
-    """Trade history entry."""
-    history_id: UUID
-    trade_id: UUID
-    actor_id: str
-    action: TradeAction
-    previous_status: Optional[TradeStatus] = None
-    new_status: Optional[TradeStatus] = None
-    details: Optional[dict] = None
-    created_at: datetime
-
-    # Joined data
-    actor_name: Optional[str] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ============== Statistics Schemas ==============
 
 class TradeSummary(BaseModel):
@@ -209,8 +171,43 @@ class TradeSummary(BaseModel):
     user_id: str
     total_trades: int
     pending_trades: int
-    active_trades: int  # accepted + confirmed
     completed_trades: int
     cancelled_trades: int
-    cards_traded: int
-    cards_received: int
+
+
+# ============== Trade History Schemas ==============
+
+class TradeHistoryCreate(BaseModel):
+    """Schema for creating a trade history entry."""
+    trade_id: UUID = Field(description="The specific trade this action relates to")
+    root_trade_id: UUID = Field(description="The root trade of the counter-offer chain")
+    sequence_number: int = Field(ge=0, description="Order of this action in the chain")
+    actor_user_id: str = Field(description="User who performed the action")
+    action: TradeHistoryAction = Field(description="The action performed")
+    details: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional action details (cards involved, reason, etc.)"
+    )
+
+
+class TradeHistoryResponse(BaseModel):
+    """Response schema for a trade history entry."""
+    history_id: UUID
+    trade_id: UUID
+    root_trade_id: UUID
+    sequence_number: int
+    actor_user_id: str
+    action: TradeHistoryAction
+    details: dict[str, Any]
+    created_at: datetime
+
+    # Joined data
+    actor_user_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TradeHistoryListResponse(BaseModel):
+    """List of trade history entries for a trade chain."""
+    history: list[TradeHistoryResponse]
+    total: int
