@@ -32,7 +32,9 @@ from models.trade import (
     TradeCardItem,
     TradeHistoryResponse,
     TradeHistoryListResponse,
+    TradeCleanupResponse,
 )
+from datetime import timedelta
 
 app = FastAPI()
 
@@ -1374,4 +1376,84 @@ async def get_user_tradeable_cards(
                 all_cards.append(card_data)
 
     return all_cards
+
+
+# ============== Admin Endpoints ==============
+
+async def _cleanup_old_resolved_trades(
+    retention_days: int = 30,
+    dry_run: bool = True
+) -> dict:
+    """
+    Removes trade_escrow and trade_recipient rows for trades
+    resolved more than retention_days ago.
+
+    Returns counts of what was (or would be) deleted.
+    """
+    # Calculate cutoff date
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    cutoff_iso = cutoff_date.isoformat()
+
+    # Find resolved trades older than retention period
+    resolved_trades = supabase.table("trade").select("trade_id").not_.is_("resolved_at", "null").lt("resolved_at", cutoff_iso).execute()
+
+    if not resolved_trades.data:
+        return {
+            "trades_cleaned": 0,
+            "escrow_records_deleted": 0,
+            "recipient_records_deleted": 0,
+        }
+
+    trade_ids = [t["trade_id"] for t in resolved_trades.data]
+
+    # Count records that would be deleted
+    escrow_count = 0
+    recipient_count = 0
+
+    for trade_id in trade_ids:
+        escrow_result = supabase.table("trade_escrow").select("*", count="exact").eq("trade_id", trade_id).execute()
+        recipient_result = supabase.table("trade_recipient").select("*", count="exact").eq("trade_id", trade_id).execute()
+        escrow_count += len(escrow_result.data) if escrow_result.data else 0
+        recipient_count += len(recipient_result.data) if recipient_result.data else 0
+
+    if not dry_run:
+        # Actually delete the records
+        for trade_id in trade_ids:
+            supabase.table("trade_escrow").delete().eq("trade_id", trade_id).execute()
+            supabase.table("trade_recipient").delete().eq("trade_id", trade_id).execute()
+
+    return {
+        "trades_cleaned": len(trade_ids),
+        "escrow_records_deleted": escrow_count,
+        "recipient_records_deleted": recipient_count,
+    }
+
+
+@app.delete("/admin/trades/cleanup", response_model=TradeCleanupResponse)
+async def cleanup_resolved_trades(
+    retention_days: int = Query(default=30, ge=1, description="Keep resolved trades newer than this many days"),
+    dry_run: bool = Query(default=True, description="Preview what would be deleted without actually deleting"),
+):
+    """
+    Admin endpoint to clean up old resolved trade records.
+
+    Removes trade_escrow and trade_recipient rows for trades that have been
+    resolved (COMPLETED, CANCELLED, REJECTED, EXPIRED) for longer than
+    the retention period.
+
+    Use dry_run=True (default) to preview what would be deleted.
+    Set dry_run=False to actually perform the cleanup.
+    """
+    result = await _cleanup_old_resolved_trades(
+        retention_days=retention_days,
+        dry_run=dry_run
+    )
+
+    return TradeCleanupResponse(
+        trades_cleaned=result["trades_cleaned"],
+        escrow_records_deleted=result["escrow_records_deleted"],
+        recipient_records_deleted=result["recipient_records_deleted"],
+        dry_run=dry_run,
+        retention_days=retention_days,
+    )
 
