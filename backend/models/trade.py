@@ -211,3 +211,14 @@ class TradeHistoryListResponse(BaseModel):
     """List of trade history entries for a trade chain."""
     history: list[TradeHistoryResponse]
     total: int
+
+
+# ============== Admin Schemas ==============
+
+class TradeCleanupResponse(BaseModel):
+    """Response from trade cleanup operation."""
+    trades_cleaned: int = Field(description="Number of trades whose records were removed")
+    escrow_records_deleted: int = Field(description="Number of trade_escrow rows deleted")
+    recipient_records_deleted: int = Field(description="Number of trade_recipient rows deleted")
+    dry_run: bool = Field(description="Whether this was a preview (no actual deletions)")
+    retention_days: int = Field(description="Trades resolved before this many days ago were cleaned")
