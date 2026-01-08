@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase stop:*)",
+      "Bash(supabase start:*)",
+      "Bash(docker rm:*)",
+      "Bash(supabase db reset:*)",
+      "Bash(cd:*)",
+      "Bash(cat:*)"
+    ]
+  }
+}
