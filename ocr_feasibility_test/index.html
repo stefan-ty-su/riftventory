@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Scanner | OCR Detection</title>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --bg-deep: #0a0b0d;
+            --bg-card: #12141a;
+            --bg-elevated: #1a1d26;
+            --border: #2a2f3d;
+            --border-glow: #3d445a;
+            --text-primary: #e8e6e3;
+            --text-secondary: #9a9590;
+            --text-muted: #5a5550;
+            --accent: #c9a55c;
+            --accent-glow: #e8c87d;
+            --success: #5cb870;
+            --error: #c95c5c;
+            --gradient-gold: linear-gradient(135deg, #c9a55c 0%, #e8c87d 50%, #c9a55c 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Pro', Georgia, serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--gradient-gold);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 20px rgba(201, 165, 92, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            background: var(--gradient-gold);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            font-style: italic;
+        }
+
+        .api-config {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .api-config label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .api-config input {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            width: 280px;
+        }
+
+        .api-config input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .api-status {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-dot.connected { background: var(--success); }
+        .status-dot.error { background: var(--error); }
+        .status-dot.checking { background: var(--accent); animation: pulse 1s infinite; }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color 0.3s ease;
+        }
+
+        .panel:hover {
+            border-color: var(--border-glow);
+        }
+
+        .panel-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .panel-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .panel-icon {
+            color: var(--accent);
+            font-size: 1.25rem;
+        }
+
+        .panel-body {
+            padding: 1.5rem;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            background: var(--bg-deep);
+            padding: 0.25rem;
+            border-radius: 8px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .mode-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .mode-btn.active {
+            background: var(--bg-elevated);
+            color: var(--accent);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .input-methods {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-btn {
+            flex: 1;
+            padding: 1rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .input-btn:hover {
+            background: var(--bg-card);
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .input-btn.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 20px rgba(201, 165, 92, 0.2);
+        }
+
+        .input-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--accent);
+        }
+
+        .preview-container {
+            position: relative;
+            background: var(--bg-deep);
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            min-height: 320px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            transition: border-color 0.3s ease;
+        }
+
+        .preview-container.has-image {
+            border-style: solid;
+            border-color: var(--border-glow);
+        }
+
+        .preview-container.dragover {
+            border-color: var(--accent);
+            background: rgba(201, 165, 92, 0.05);
+        }
+
+        .preview-placeholder {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 2rem;
+        }
+
+        .preview-placeholder svg {
+            width: 64px;
+            height: 64px;
+            stroke: var(--text-muted);
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        #preview-image {
+            max-width: 100%;
+            max-height: 400px;
+            display: none;
+            border-radius: 4px;
+        }
+
+        #camera-feed {
+            width: 100%;
+            max-height: 400px;
+            display: none;
+            border-radius: 4px;
+        }
+
+        #detection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+
+        .scan-region {
+            position: absolute;
+            border: 3px solid var(--accent);
+            box-shadow: 0 0 0 9999px rgba(10, 11, 13, 0.7);
+            pointer-events: none;
+            display: none;
+        }
+
+        .scan-region::before {
+            content: 'Position card ID here';
+            position: absolute;
+            top: -2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent);
+            color: var(--bg-deep);
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .scan-region-corners {
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+        }
+
+        .scan-region-corners::before,
+        .scan-region-corners::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--accent-glow);
+        }
+
+        .scan-region-corners::before {
+            top: 0;
+            left: 0;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .scan-region-corners::after {
+            bottom: 0;
+            right: 0;
+            border-left: none;
+            border-top: none;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 1rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--gradient-gold);
+            color: var(--bg-deep);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(201, 165, 92, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+        }
+
+        .results-container {
+            min-height: 400px;
+        }
+
+        .result-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .result-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .result-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .result-value {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem;
+            font-size: 1rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .result-value.mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .card-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--accent);
+            border-radius: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .card-type-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+        }
+
+        .fields-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+
+        .field-item {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.75rem;
+        }
+
+        .field-item.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .field-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        .field-value {
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .field-value.large {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .progress-container {
+            margin-top: 1rem;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--bg-elevated);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--gradient-gold);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-fill.indeterminate {
+            width: 30%;
+            animation: indeterminate 1.5s ease-in-out infinite;
+        }
+
+        @keyframes indeterminate {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(400%); }
+        }
+
+        .progress-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+            text-align: center;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            stroke: var(--text-muted);
+            opacity: 0.3;
+            margin-bottom: 1rem;
+        }
+
+        .confidence-meter {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .confidence-bar {
+            flex: 1;
+            height: 6px;
+            background: var(--bg-deep);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        .confidence-fill.high { background: var(--success); }
+        .confidence-fill.medium { background: var(--accent); }
+        .confidence-fill.low { background: var(--error); }
+
+        .confidence-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            min-width: 45px;
+            text-align: right;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .scanning {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            margin-top: 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">🃏</div>
+                <h1>Card Scanner</h1>
+            </div>
+            <p class="tagline">Client-side OCR detection for trading cards</p>
+            <div class="api-config">
+                <label>Backend (Optional):</label>
+                <input type="text" id="api-url" value="http://localhost:8001" placeholder="http://localhost:8001">
+                <div class="api-status">
+                    <span class="status-dot" id="status-dot"></span>
+                    <span id="status-text">Checking...</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-icon">📷</span>
+                    <h2>Card Input</h2>
+                </div>
+                <div class="panel-body">
+                    <div class="input-methods">
+                        <button class="input-btn active" id="upload-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            Upload
+                        </button>
+                        <button class="input-btn" id="stream-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                <circle cx="12" cy="13" r="4"/>
+                            </svg>
+                            Video Stream
+                        </button>
+                    </div>
+
+                    <input type="file" id="file-input" accept="image/*">
+
+                    <div class="preview-container" id="preview-container">
+                        <div class="preview-placeholder" id="placeholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                            </svg>
+                            <p>Drop an image here or use the buttons above</p>
+                        </div>
+                        <img id="preview-image" alt="Card preview">
+                        <video id="camera-feed" autoplay playsinline></video>
+                        <canvas id="detection-canvas"></canvas>
+                        <div class="scan-region" id="scan-region">
+                            <div class="scan-region-corners"></div>
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn btn-primary" id="scan-btn" disabled>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            Scan Card
+                        </button>
+                        <button class="btn btn-primary" id="start-stream-btn" style="display: none;">
+                            Start Scanning
+                        </button>
+                        <button class="btn btn-secondary" id="stop-stream-btn" style="display: none;">
+                            Stop Scanning
+                        </button>
+                        <button class="btn btn-secondary" id="clear-btn">
+                            Clear
+                        </button>
+                    </div>
+
+                    <div class="progress-container" id="progress-container" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <p class="progress-text" id="progress-text">Processing...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-icon">📋</span>
+                    <h2>Scanned Cards</h2>
+                    <button class="btn btn-secondary" id="clear-list-btn" style="margin-left: auto; padding: 0.5rem 1rem; font-size: 0.75rem;">
+                        Clear List
+                    </button>
+                </div>
+                <div class="panel-body results-container" id="results-container">
+                    <div class="empty-state" id="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                        <p>Start scanning to see detected cards</p>
+                    </div>
+                    <div id="scanned-list" style="display: none;"></div>
+                    <div id="stream-status" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--bg-elevated); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;"></div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Powered by <a href="https://github.com/naptha/tesseract.js" target="_blank">Tesseract.js</a> | Drag &amp; drop or paste images to scan | Works offline</p>
+        </footer>
+    </div>
+
+    <script>
+        // State
+        let currentImage = null;
+        let cameraStream = null;
+        let isScanning = false;
+        let isStreaming = false;
+        let streamInterval = null;
+        let scannedCards = [];
+        let tesseractWorker = null;
+        let useBackend = false;
+
+        // Card ID pattern
+        const CARD_ID_PATTERN = /([A-Z]{2,4})\s*(\d{3})(?:\/(\d{3}))?/;
+
+        // DOM Elements
+        const apiUrlInput = document.getElementById('api-url');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const uploadBtn = document.getElementById('upload-btn');
+        const streamBtn = document.getElementById('stream-btn');
+        const fileInput = document.getElementById('file-input');
+        const previewContainer = document.getElementById('preview-container');
+        const placeholder = document.getElementById('placeholder');
+        const previewImage = document.getElementById('preview-image');
+        const cameraFeed = document.getElementById('camera-feed');
+        const detectionCanvas = document.getElementById('detection-canvas');
+        const scanRegion = document.getElementById('scan-region');
+        const scanBtn = document.getElementById('scan-btn');
+        const startStreamBtn = document.getElementById('start-stream-btn');
+        const stopStreamBtn = document.getElementById('stop-stream-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const clearListBtn = document.getElementById('clear-list-btn');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const emptyState = document.getElementById('empty-state');
+        const scannedList = document.getElementById('scanned-list');
+        const streamStatus = document.getElementById('stream-status');
+
+        // Initialize Tesseract
+        async function initTesseract() {
+            if (!tesseractWorker) {
+                try {
+                    tesseractWorker = await Tesseract.createWorker('eng');
+                    await tesseractWorker.setParameters({
+                        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/',
+                    });
+                    console.log('Tesseract initialized');
+                } catch (err) {
+                    console.error('Failed to initialize Tesseract:', err);
+                    useBackend = true;
+                }
+            }
+        }
+
+        initTesseract();
+
+        // API Health Check
+        async function checkApiHealth() {
+            statusDot.className = 'status-dot checking';
+            statusText.textContent = 'Checking...';
+            
+            try {
+                const response = await fetch(`${apiUrlInput.value}/health`, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(5000)
+                });
+                
+                if (response.ok) {
+                    statusDot.className = 'status-dot connected';
+                    statusText.textContent = 'Connected';
+                } else {
+                    throw new Error('Not OK');
+                }
+            } catch (e) {
+                statusDot.className = 'status-dot error';
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        checkApiHealth();
+        loadScannedCards();
+        apiUrlInput.addEventListener('change', () => {
+            checkApiHealth();
+            loadScannedCards();
+        });
+
+        async function loadScannedCards() {
+            try {
+                const response = await fetch(`${apiUrlInput.value}/scanned-cards`);
+                if (response.ok) {
+                    const data = await response.json();
+                    scannedCards = data.cards || [];
+                    updateScannedList();
+                }
+            } catch (err) {
+                console.error('Failed to load scanned cards:', err);
+            }
+        }
+
+        // Input Methods
+        uploadBtn.addEventListener('click', () => {
+            setInputMode('upload');
+            fileInput.click();
+        });
+
+        streamBtn.addEventListener('click', () => {
+            setInputMode('stream');
+            startCamera();
+        });
+
+        fileInput.addEventListener('change', handleFileSelect);
+
+        previewContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            previewContainer.classList.add('dragover');
+        });
+
+        previewContainer.addEventListener('dragleave', () => {
+            previewContainer.classList.remove('dragover');
+        });
+
+        previewContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            previewContainer.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                loadImage(file);
+            }
+        });
+
+        document.addEventListener('paste', (e) => {
+            const items = e.clipboardData.items;
+            for (let item of items) {
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    loadImage(file);
+                    break;
+                }
+            }
+        });
+
+        scanBtn.addEventListener('click', performOCR);
+        startStreamBtn.addEventListener('click', startStreamScanning);
+        stopStreamBtn.addEventListener('click', stopStreamScanning);
+        clearBtn.addEventListener('click', clearAll);
+        clearListBtn.addEventListener('click', clearScannedList);
+
+        function setInputMode(mode) {
+            uploadBtn.classList.toggle('active', mode === 'upload');
+            streamBtn.classList.toggle('active', mode === 'stream');
+
+            if (mode === 'upload') {
+                stopStreamScanning();
+                stopCamera();
+                scanBtn.style.display = 'flex';
+                startStreamBtn.style.display = 'none';
+                stopStreamBtn.style.display = 'none';
+            } else if (mode === 'stream') {
+                scanBtn.style.display = 'none';
+                startStreamBtn.style.display = 'flex';
+                stopStreamBtn.style.display = 'none';
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                loadImage(file);
+            }
+        }
+
+        function loadImage(file) {
+            stopStreamScanning();
+            stopCamera();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentImage = e.target.result;
+                previewImage.src = currentImage;
+                previewImage.style.display = 'block';
+                placeholder.style.display = 'none';
+                cameraFeed.style.display = 'none';
+                previewContainer.classList.add('has-image');
+                scanBtn.disabled = false;
+                clearCanvas();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function startCamera() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+                });
+                cameraFeed.srcObject = cameraStream;
+                cameraFeed.style.display = 'block';
+                previewImage.style.display = 'none';
+                placeholder.style.display = 'none';
+                previewContainer.classList.add('has-image');
+                startStreamBtn.disabled = false;
+
+                // Show scan region overlay
+                cameraFeed.addEventListener('loadedmetadata', () => {
+                    positionScanRegion();
+                });
+            } catch (err) {
+                console.error('Camera error:', err);
+                alert('Unable to access camera. Please check permissions.');
+            }
+        }
+
+        function positionScanRegion() {
+            const containerRect = previewContainer.getBoundingClientRect();
+            const videoRect = cameraFeed.getBoundingClientRect();
+
+            // Position region in center, sized for typical card ID area
+            const regionWidth = Math.min(300, videoRect.width * 0.7);
+            const regionHeight = 60;
+
+            scanRegion.style.width = regionWidth + 'px';
+            scanRegion.style.height = regionHeight + 'px';
+            scanRegion.style.left = ((containerRect.width - regionWidth) / 2) + 'px';
+            scanRegion.style.top = ((containerRect.height - regionHeight) / 2) + 'px';
+            scanRegion.style.display = 'block';
+        }
+
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+                cameraFeed.style.display = 'none';
+                scanRegion.style.display = 'none';
+            }
+        }
+
+        function captureRegion() {
+            const canvas = document.createElement('canvas');
+            const videoRect = cameraFeed.getBoundingClientRect();
+            const containerRect = previewContainer.getBoundingClientRect();
+            const regionRect = scanRegion.getBoundingClientRect();
+
+            // Calculate the region position relative to the video
+            const scaleX = cameraFeed.videoWidth / videoRect.width;
+            const scaleY = cameraFeed.videoHeight / videoRect.height;
+
+            const regionX = (regionRect.left - videoRect.left) * scaleX;
+            const regionY = (regionRect.top - videoRect.top) * scaleY;
+            const regionWidth = regionRect.width * scaleX;
+            const regionHeight = regionRect.height * scaleY;
+
+            canvas.width = regionWidth;
+            canvas.height = regionHeight;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(
+                cameraFeed,
+                regionX, regionY, regionWidth, regionHeight,
+                0, 0, regionWidth, regionHeight
+            );
+
+            return canvas;
+        }
+
+        async function performClientOCR(imageSource) {
+            if (!tesseractWorker) {
+                throw new Error('Tesseract not initialized');
+            }
+
+            const { data: { text } } = await tesseractWorker.recognize(imageSource);
+            const match = text.match(CARD_ID_PATTERN);
+
+            if (match) {
+                const setCode = match[1];
+                const cardNum = match[2];
+                const totalCards = match[3];
+
+                if (totalCards) {
+                    return `${setCode} ${cardNum.padStart(3, '0')}/${totalCards}`;
+                } else {
+                    return `${setCode} ${cardNum.padStart(3, '0')}`;
+                }
+            }
+
+            return null;
+        }
+
+        async function startStreamScanning() {
+            if (!cameraStream) return;
+
+            isStreaming = true;
+            startStreamBtn.style.display = 'none';
+            stopStreamBtn.style.display = 'flex';
+            streamStatus.style.display = 'block';
+            streamStatus.textContent = 'Scanning...';
+
+            // Scan every 1 second
+            streamInterval = setInterval(async () => {
+                await scanFrame();
+            }, 1000);
+        }
+
+        function stopStreamScanning() {
+            if (streamInterval) {
+                clearInterval(streamInterval);
+                streamInterval = null;
+            }
+            isStreaming = false;
+            if (cameraStream) {
+                startStreamBtn.style.display = 'flex';
+                stopStreamBtn.style.display = 'none';
+            }
+            streamStatus.textContent = 'Scanning stopped';
+        }
+
+        async function scanFrame() {
+            if (!cameraStream || isScanning) return;
+
+            isScanning = true;
+
+            try {
+                let cardId = null;
+
+                if (useBackend) {
+                    // Fallback to backend
+                    const imageData = captureFromCamera();
+                    const response = await fetch(`${apiUrlInput.value}/scan-stream`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            image: imageData,
+                            mode: 'tcg'
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.card_detected) {
+                        cardId = data.card_id;
+                    }
+                } else {
+                    // Use client-side OCR with region
+                    const regionCanvas = captureRegion();
+                    cardId = await performClientOCR(regionCanvas);
+                }
+
+                if (cardId) {
+                    const alreadyScanned = scannedCards.includes(cardId);
+                    if (!alreadyScanned) {
+                        scannedCards.push(cardId);
+                        updateScannedList();
+                        // Sync to backend if available
+                        syncCardToBackend(cardId);
+                        streamStatus.textContent = `New card detected: ${cardId}`;
+                        streamStatus.style.color = 'var(--success)';
+                    } else {
+                        streamStatus.textContent = `Already scanned: ${cardId}`;
+                        streamStatus.style.color = 'var(--text-secondary)';
+                    }
+                } else {
+                    streamStatus.textContent = 'Scanning... (no card detected)';
+                    streamStatus.style.color = 'var(--text-muted)';
+                }
+
+            } catch (err) {
+                console.error('Stream scan error:', err);
+                streamStatus.textContent = `Error: ${err.message}`;
+                streamStatus.style.color = 'var(--error)';
+            } finally {
+                isScanning = false;
+            }
+        }
+
+        async function syncCardToBackend(cardId) {
+            try {
+                await fetch(`${apiUrlInput.value}/scan-stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        image: '',
+                        mode: 'tcg',
+                        card_id: cardId
+                    })
+                });
+            } catch (err) {
+                console.log('Backend sync failed (offline mode)');
+            }
+        }
+
+        function updateScannedList() {
+            if (scannedCards.length === 0) {
+                emptyState.style.display = 'block';
+                scannedList.style.display = 'none';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            scannedList.style.display = 'block';
+
+            scannedList.innerHTML = `
+                <div class="result-section">
+                    <div class="result-label">Total Cards: ${scannedCards.length}</div>
+                    <div class="fields-grid">
+                        ${scannedCards.map((card, index) => `
+                            <div class="field-item full-width">
+                                <div class="field-label">#${index + 1}</div>
+                                <div class="field-value">${card}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function clearScannedList() {
+            try {
+                await fetch(`${apiUrlInput.value}/scanned-cards`, {
+                    method: 'DELETE'
+                });
+                scannedCards = [];
+                updateScannedList();
+                streamStatus.textContent = 'Card list cleared';
+                streamStatus.style.color = 'var(--text-secondary)';
+            } catch (err) {
+                console.error('Clear list error:', err);
+            }
+        }
+
+        function captureFromCamera() {
+            const canvas = document.createElement('canvas');
+            canvas.width = cameraFeed.videoWidth;
+            canvas.height = cameraFeed.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(cameraFeed, 0, 0);
+            return canvas.toDataURL('image/png');
+        }
+
+        function clearCanvas() {
+            const ctx = detectionCanvas.getContext('2d');
+            ctx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
+        }
+
+        function clearAll() {
+            stopStreamScanning();
+            stopCamera();
+            currentImage = null;
+            previewImage.src = '';
+            previewImage.style.display = 'none';
+            cameraFeed.style.display = 'none';
+            placeholder.style.display = 'block';
+            previewContainer.classList.remove('has-image');
+            scanBtn.disabled = true;
+            progressContainer.style.display = 'none';
+            streamStatus.style.display = 'none';
+            clearCanvas();
+            setInputMode('upload');
+        }
+
+        async function performOCR() {
+            if (isScanning) return;
+            isScanning = true;
+            scanBtn.disabled = true;
+            scanBtn.classList.add('scanning');
+
+            progressContainer.style.display = 'block';
+            progressFill.classList.add('indeterminate');
+            progressText.textContent = 'Processing with OCR...';
+
+            try {
+                let cardId = null;
+
+                if (useBackend) {
+                    // Use backend
+                    const response = await fetch(`${apiUrlInput.value}/scan-stream`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            image: currentImage,
+                            mode: 'tcg'
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.card_detected) {
+                        cardId = data.card_id;
+                    }
+                } else {
+                    // Use client-side OCR
+                    cardId = await performClientOCR(currentImage);
+                }
+
+                progressFill.classList.remove('indeterminate');
+                progressFill.style.width = '100%';
+                progressText.textContent = 'Complete!';
+
+                if (cardId) {
+                    const alreadyScanned = scannedCards.includes(cardId);
+                    if (!alreadyScanned) {
+                        scannedCards.push(cardId);
+                        updateScannedList();
+                        syncCardToBackend(cardId);
+                    }
+                    streamStatus.style.display = 'block';
+                    streamStatus.textContent = alreadyScanned ?
+                        `Already scanned: ${cardId}` :
+                        `Card detected: ${cardId}`;
+                    streamStatus.style.color = alreadyScanned ?
+                        'var(--text-secondary)' : 'var(--success)';
+                } else {
+                    streamStatus.style.display = 'block';
+                    streamStatus.textContent = 'No card detected in image';
+                    streamStatus.style.color = 'var(--text-muted)';
+                }
+
+            } catch (err) {
+                console.error('OCR error:', err);
+                streamStatus.style.display = 'block';
+                streamStatus.textContent = `Error: ${err.message}`;
+                streamStatus.style.color = 'var(--error)';
+            } finally {
+                isScanning = false;
+                scanBtn.disabled = false;
+                scanBtn.classList.remove('scanning');
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    progressFill.classList.remove('indeterminate');
+                    progressFill.style.width = '0%';
+                }, 1500);
+            }
+        }
+    </script>
+</body>
+</html>

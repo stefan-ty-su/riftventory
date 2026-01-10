@@ -1,0 +1,19 @@
+services:
+  ocr-backend:
+    build: ./backend
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+    
+  # Optional: Serve frontend via nginx
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "3000:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+    depends_on:
+      - ocr-backend
+    restart: unless-stopped
