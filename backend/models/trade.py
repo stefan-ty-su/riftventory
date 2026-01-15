@@ -47,7 +47,7 @@ class TradeCreate(BaseModel):
     initiator_inventory_id: UUID = Field(description="Inventory the initiator is trading from")
     recipient_inventory_id: UUID = Field(description="Inventory the recipient will trade from")
     escrow_cards: list[TradeCardItem] = Field(
-        min_length=1,
+        default=[],
         description="Cards the initiator is offering (goes to escrow)"
     )
     requested_cards: list[TradeCardItem] = Field(
