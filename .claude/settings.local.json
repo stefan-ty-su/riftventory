@@ -6,7 +6,8 @@
       "Bash(docker rm:*)",
       "Bash(supabase db reset:*)",
       "Bash(cd:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(python:*)"
     ]
   }
 }
