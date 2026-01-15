@@ -929,9 +929,11 @@ async def accept_trade(
         }
     )
 
-    # Return updated trade
-    updated_trade = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
-    return _build_trade_response(str(trade_id), updated_trade.data[0])
+    # Return updated trade (update in-memory object instead of re-querying)
+    trade["status"] = TradeStatus.ACCEPTED.value
+    trade["recipient_confirmed"] = True
+    trade["recipient_confirmed_at"] = now
+    return _build_trade_response(str(trade_id), trade)
 
 
 @app.post("/trades/{trade_id}/reject", response_model=TradeWithCardsResponse)
@@ -1289,9 +1291,14 @@ async def unconfirm_trade(
         }
     )
 
-    # Return updated trade
-    updated_trade = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
-    return _build_trade_response(str(trade_id), updated_trade.data[0])
+    # Return updated trade (update in-memory object instead of re-querying)
+    if is_initiator:
+        trade["initiator_confirmed"] = False
+        trade["initiator_confirmed_at"] = None
+    else:
+        trade["recipient_confirmed"] = False
+        trade["recipient_confirmed_at"] = None
+    return _build_trade_response(str(trade_id), trade)
 
 
 # ============== Trade History Endpoints ==============
