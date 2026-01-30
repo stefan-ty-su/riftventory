@@ -6,6 +6,12 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from typing import Optional
 
+from models.card import (
+    CardBase,
+    CardListResponse,
+    CardResponse
+)
+
 from models.inventory import (
     InventoryCreate,
     InventoryUpdate,
@@ -61,10 +67,127 @@ def read_root():
 def health_check():
     return {"status": "healthy"}
 
+# ============== Card Information Endpoints ==============
+@app.get("/cards", response_model=CardListResponse)
+async def get_cards(
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(default=50, ge=1, le=100, description="Items per page"),
+    set_id: Optional[str] = None,
+    rarity: Optional[str] = None,
+    domain: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = Query(
+        "card_id",
+        regex="^(card_id|card_name|card_number|attr_energy|attr_power|attr_might|card_rarity|set_id)$",
+        description="Field to sort by"
+    ),
+    sort_desc: Optional[bool] = False
+):
+    """Get all cards in Riftbound with optional filters and sorting"""
+
+    # First, get total count with filters applied
+    count_query = supabase.table("card").select("*", count="exact")
+
+    if set_id:
+        count_query = count_query.eq("set_id", set_id)
+    if rarity:
+        rarity_list = [r.strip() for r in rarity.split(',') if r.strip()]
+        if len(rarity_list) == 1:
+            count_query = count_query.eq("card_rarity", rarity_list[0])
+        else:
+            count_query = count_query.in_("card_rarity", rarity_list)
+    if domain:
+        domain_list = [d.strip() for d in domain.split(',') if d.strip()]
+        if len(domain_list) == 1:
+            count_query = count_query.contains("card_domain", domain_list)
+        else:
+            count_query = count_query.overlaps("card_domain", domain_list)
+    if search:
+        count_query = count_query.ilike("card_name", f"%{search}%")
+
+    count_result = count_query.execute()
+    total_count = count_result.count if count_result.count is not None else len(count_result.data)
+
+    # Build the paginated data query with same filters
+    query = supabase.table("card").select("*")
+
+    if set_id:
+        query = query.eq("set_id", set_id)
+    if rarity:
+        rarity_list = [r.strip() for r in rarity.split(',') if r.strip()]
+        if len(rarity_list) == 1:
+            query = query.eq("card_rarity", rarity_list[0])
+        else:
+            query = query.in_("card_rarity", rarity_list)
+    if domain:
+        domain_list = [d.strip() for d in domain.split(',') if d.strip()]
+        if len(domain_list) == 1:
+            query = query.contains("card_domain", domain_list)
+        else:
+            query = query.overlaps("card_domain", domain_list)
+    if search:
+        query = query.ilike("card_name", f"%{search}%")
+
+    query = query.order(sort_by, desc=sort_desc)
+
+    # Pagination
+    offset = (page-1) * page_size
+    query = query.range(offset, offset + page_size-1)
+
+    result = query.execute()
+    cards = []
+    for item in result.data:
+        card_data = {
+            "card_id": item["card_id"],
+            "set_id": item["set_id"],
+            "card_number": item["card_number"],
+            "public_code": item["public_code"],
+            "card_name": item["card_name"],
+            "attr_energy": item["attr_energy"],
+            "attr_power": item["attr_power"],
+            "attr_might": item["attr_might"],
+            "card_type": item["card_type"],
+            "card_supertype": item["card_supertype"],
+            "card_rarity": item["card_rarity"],
+            "card_domain": item["card_domain"],
+            "card_image_url": item["card_image_url"],
+            "card_artist": item["card_artist"],
+            "card_tags": item["card_tags"],
+            "alternate_art": item["alternate_art"],
+            "overnumbered": item["overnumbered"],
+            "signature": item["signature"],
+        }
+
+        cards.append(card_data)
+
+    return {
+        "cards": cards,
+        "total": total_count,
+        "page": page,
+        "limit": page_size
+    }
+
+@app.get("/cards/{card_id}", response_model=CardResponse)
+async def get_card(
+    card_id: str
+):
+    query = supabase.table("card").select("*").eq(
+        "card_id", card_id
+    )
+
+    result = query.execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+
+    item = result.data[0]
+
+    return item
+    
 
 # ============== Inventory Endpoints ==============
 
-@app.post("/inventories", response_model=InventoryResponse, status_code=201)
+@app.post("/inventories", response_model=InventoryResponse)
 async def create_inventory(inventory: InventoryCreate):
     """Create a new inventory for a user."""
     data = {
