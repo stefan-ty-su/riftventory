@@ -8,7 +8,8 @@ from typing import Optional
 
 from models.card import (
     CardBase,
-    CardListResponse
+    CardListResponse,
+    CardResponse
 )
 
 from models.inventory import (
@@ -90,9 +91,17 @@ async def get_cards(
     if set_id:
         count_query = count_query.eq("set_id", set_id)
     if rarity:
-        count_query = count_query.eq("card_rarity", rarity)
+        rarity_list = [r.strip() for r in rarity.split(',') if r.strip()]
+        if len(rarity_list) == 1:
+            count_query = count_query.eq("card_rarity", rarity_list[0])
+        else:
+            count_query = count_query.in_("card_rarity", rarity_list)
     if domain:
-        count_query = count_query.contains("card_domain", [domain])
+        domain_list = [d.strip() for d in domain.split(',') if d.strip()]
+        if len(domain_list) == 1:
+            count_query = count_query.contains("card_domain", domain_list)
+        else:
+            count_query = count_query.overlaps("card_domain", domain_list)
     if search:
         count_query = count_query.ilike("card_name", f"%{search}%")
 
@@ -105,9 +114,17 @@ async def get_cards(
     if set_id:
         query = query.eq("set_id", set_id)
     if rarity:
-        query = query.eq("card_rarity", rarity)
+        rarity_list = [r.strip() for r in rarity.split(',') if r.strip()]
+        if len(rarity_list) == 1:
+            query = query.eq("card_rarity", rarity_list[0])
+        else:
+            query = query.in_("card_rarity", rarity_list)
     if domain:
-        query = query.contains("card_domain", [domain])
+        domain_list = [d.strip() for d in domain.split(',') if d.strip()]
+        if len(domain_list) == 1:
+            query = query.contains("card_domain", domain_list)
+        else:
+            query = query.overlaps("card_domain", domain_list)
     if search:
         query = query.ilike("card_name", f"%{search}%")
 
@@ -150,6 +167,23 @@ async def get_cards(
         "limit": page_size
     }
 
+@app.get("/cards/{card_id}", response_model=CardResponse)
+async def get_card(
+    card_id: str
+):
+    query = supabase.table("card").select("*").eq(
+        "card_id", card_id
+    )
+
+    result = query.execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+
+    item = result.data[0]
+
+    return item
+    
 
 # ============== Inventory Endpoints ==============
 
