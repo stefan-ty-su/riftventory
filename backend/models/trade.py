@@ -43,7 +43,7 @@ class TradeCardItem(BaseModel):
 
 class TradeCreate(BaseModel):
     """Schema for creating a new trade offer."""
-    recipient_user_id: str = Field(description="User ID of the trade recipient")
+    recipient_user_id: UUID = Field(description="User ID of the trade recipient")
     initiator_inventory_id: UUID = Field(description="Inventory the initiator is trading from")
     recipient_inventory_id: UUID = Field(description="Inventory the recipient will trade from")
     escrow_cards: list[TradeCardItem] = Field(
@@ -109,9 +109,9 @@ class TradeCardResponse(TradeCardItem):
 class TradeResponse(BaseModel):
     """Full trade response."""
     trade_id: UUID
-    initiator_user_id: str
+    initiator_user_id: UUID
     initiator_inventory_id: UUID
-    recipient_user_id: str
+    recipient_user_id: UUID
     recipient_inventory_id: UUID
     status: TradeStatus
     message: Optional[str] = None
@@ -168,7 +168,7 @@ class TradeListResponse(BaseModel):
 
 class TradeSummary(BaseModel):
     """Summary statistics for a user's trades."""
-    user_id: str
+    user_id: UUID
     total_trades: int
     pending_trades: int
     completed_trades: int
@@ -182,7 +182,7 @@ class TradeHistoryCreate(BaseModel):
     trade_id: UUID = Field(description="The specific trade this action relates to")
     root_trade_id: UUID = Field(description="The root trade of the counter-offer chain")
     sequence_number: int = Field(ge=0, description="Order of this action in the chain")
-    actor_user_id: str = Field(description="User who performed the action")
+    actor_user_id: UUID = Field(description="User who performed the action")
     action: TradeHistoryAction = Field(description="The action performed")
     details: dict[str, Any] = Field(
         default_factory=dict,
@@ -196,7 +196,7 @@ class TradeHistoryResponse(BaseModel):
     trade_id: UUID
     root_trade_id: UUID
     sequence_number: int
-    actor_user_id: str
+    actor_user_id: UUID
     action: TradeHistoryAction
     details: dict[str, Any]
     created_at: datetime

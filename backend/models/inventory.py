@@ -25,7 +25,7 @@ class InventoryBase(BaseModel):
 
 class InventoryCreate(InventoryBase):
     """Schema for creating a new inventory."""
-    user_id: str
+    user_id: UUID
 
 
 class InventoryCardCreate(InventoryCardBase):
@@ -80,10 +80,10 @@ class InventoryCardResponse(InventoryCardBase):
 class InventoryResponse(InventoryBase):
     """Full inventory response."""
     inventory_id: UUID
-    user_id: str
+    user_id: UUID
     created_at: Optional[datetime] = None
     last_updated: Optional[datetime] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
