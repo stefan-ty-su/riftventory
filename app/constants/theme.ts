@@ -171,35 +171,29 @@ export const Shadows = {
 };
 
 // Domain color utilities (matched to rune card art)
-export const DomainColors: Record<string, { primary: string; glow: string; text: string }> = {
+export const DomainColors: Record<string, { primary: string; text: string }> = {
   Fury: {
     primary: Colors.domainFury,
-    glow: 'rgba(214, 40, 57, 0.4)',
     text: '#F25C69',
   },
   Calm: {
     primary: Colors.domainCalm,
-    glow: 'rgba(45, 143, 78, 0.4)',
     text: '#5DBF7A',
   },
   Chaos: {
     primary: Colors.domainChaos,
-    glow: 'rgba(123, 45, 142, 0.4)',
     text: '#A85DC2',
   },
   Order: {
     primary: Colors.domainOrder,
-    glow: 'rgba(212, 160, 23, 0.4)',
     text: '#F0C040',
   },
   Body: {
     primary: Colors.domainBody,
-    glow: 'rgba(224, 112, 32, 0.4)',
     text: '#F09050',
   },
   Mind: {
     primary: Colors.domainMind,
-    glow: 'rgba(37, 116, 169, 0.4)',
     text: '#4A9FD4',
   },
 };
