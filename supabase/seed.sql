@@ -1570,17 +1570,17 @@ RESET ALL;
 
 -- Add test users
 INSERT INTO "public"."user" (user_id, user_name) VALUES
-  ('dev-user-1', 'TestUser1'),
-  ('dev-user-2', 'TestUser2'),
-  ('dev-user-3', 'CollectorPro')
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'TestUser1'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'TestUser2'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'CollectorPro')
 ON CONFLICT (user_id) DO NOTHING;
 
 -- Add test inventories
 INSERT INTO "public"."inventory" (inventory_id, user_id, inventory_name, inventory_colour, created_at, last_updated) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'dev-user-1', 'Main Collection', '#FF5733', NOW(), NOW()),
-  ('22222222-2222-2222-2222-222222222222', 'dev-user-1', 'Trade Binder', '#3498DB', NOW(), NOW()),
-  ('33333333-3333-3333-3333-333333333333', 'dev-user-2', 'Fury Deck', '#9B59B6', NOW(), NOW()),
-  ('44444444-4444-4444-4444-444444444444', 'dev-user-3', 'Complete Set', '#27AE60', NOW(), NOW())
+  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Main Collection', '#FF5733', NOW(), NOW()),
+  ('22222222-2222-2222-2222-222222222222', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Trade Binder', '#3498DB', NOW(), NOW()),
+  ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Fury Deck', '#9B59B6', NOW(), NOW()),
+  ('44444444-4444-4444-4444-444444444444', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'Complete Set', '#27AE60', NOW(), NOW())
 ON CONFLICT (inventory_id) DO NOTHING;
 
 -- Add test inventory_cards (referencing actual cards from production data)
