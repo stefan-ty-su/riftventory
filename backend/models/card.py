@@ -33,3 +33,8 @@ class CardListResponse(BaseModel):
     total: Optional[int] = None
     page: Optional[int] = None
     limit: Optional[int] = None
+
+
+class CardResponse(CardBase):
+    text_rich: Optional[str] = None
+    text_plain: Optional[str] = None
