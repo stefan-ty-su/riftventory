@@ -218,9 +218,9 @@ async def get_inventory(inventory_id: UUID):
 
 
 @app.get("/users/{user_id}/inventories", response_model=list[InventoryResponse])
-async def get_user_inventories(user_id: str):
+async def get_user_inventories(user_id: UUID):
     """Get all inventories for a specific user."""
-    result = supabase.table("inventory").select("*").eq("user_id", user_id).execute()
+    result = supabase.table("inventory").select("*").eq("user_id", str(user_id)).execute()
 
     return result.data
 
@@ -822,7 +822,7 @@ async def _execute_trade(trade_id: str, trade: dict) -> dict:
 @app.post("/trades", response_model=TradeWithCardsResponse, status_code=201)
 async def create_trade(
     trade: TradeCreate,
-    x_user_id: str = Header(..., description="User ID of the trade initiator")
+    x_user_id: UUID = Header(..., description="User ID of the trade initiator")
 ):
     """Create a new trade offer. Can be used for trades between users or transfers between own inventories."""
     # Verify initiator owns the initiator inventory
@@ -832,7 +832,7 @@ async def create_trade(
 
     if not inv_result.data:
         raise HTTPException(status_code=404, detail="Initiator inventory not found")
-    if inv_result.data[0]["user_id"] != x_user_id:
+    if inv_result.data[0]["user_id"] != str(x_user_id):
         raise HTTPException(status_code=403, detail="You don't own this inventory")
 
     # Verify recipient inventory exists
@@ -842,7 +842,7 @@ async def create_trade(
 
     if not recipient_inv.data:
         raise HTTPException(status_code=404, detail="Recipient inventory not found")
-    if recipient_inv.data[0]["user_id"] != trade.recipient_user_id:
+    if recipient_inv.data[0]["user_id"] != str(trade.recipient_user_id):
         raise HTTPException(status_code=400, detail="Recipient inventory doesn't belong to recipient user")
 
     # Check if this is a self-transfer (same user, different inventories)
@@ -864,9 +864,9 @@ async def create_trade(
     trade_data = {
         "trade_id": trade_id,
         "root_trade_id": trade_id,
-        "initiator_user_id": x_user_id,
+        "initiator_user_id": str(x_user_id),
         "initiator_inventory_id": str(trade.initiator_inventory_id),
-        "recipient_user_id": trade.recipient_user_id,
+        "recipient_user_id": str(trade.recipient_user_id),
         "recipient_inventory_id": str(trade.recipient_inventory_id),
         "status": TradeStatus.PENDING.value,
         "message": trade.message,
@@ -900,10 +900,10 @@ async def create_trade(
     _record_trade_history(
         trade_id=trade_id,
         root_trade_id=trade_id,
-        actor_user_id=x_user_id,
+        actor_user_id=str(x_user_id),
         action=TradeHistoryAction.CREATED,
         details={
-            "other_user_id": trade.recipient_user_id,
+            "other_user_id": str(trade.recipient_user_id),
             "escrow_cards": [c.model_dump() for c in trade.escrow_cards],
             "requested_cards": [c.model_dump() for c in trade.requested_cards],
         }
@@ -951,20 +951,21 @@ async def get_trade(trade_id: UUID):
 
 @app.get("/users/{user_id}/trades", response_model=list[TradeResponse])
 async def get_user_trades(
-    user_id: str,
+    user_id: UUID,
     status: Optional[str] = Query(None, description="Filter by trade status"),
     role: Optional[str] = Query(None, pattern="^(initiator|recipient|any)$", description="Filter by role"),
 ):
     """Get all trades for a user with optional filters."""
+    user_id_str = str(user_id)
     # Build query for trades where user is initiator OR recipient
     if role == "initiator":
-        query = supabase.table("trade").select("*").eq("initiator_user_id", user_id)
+        query = supabase.table("trade").select("*").eq("initiator_user_id", user_id_str)
     elif role == "recipient":
-        query = supabase.table("trade").select("*").eq("recipient_user_id", user_id)
+        query = supabase.table("trade").select("*").eq("recipient_user_id", user_id_str)
     else:
         # Get both - need to do two queries and merge
-        initiator_trades = supabase.table("trade").select("*").eq("initiator_user_id", user_id).execute()
-        recipient_trades = supabase.table("trade").select("*").eq("recipient_user_id", user_id).execute()
+        initiator_trades = supabase.table("trade").select("*").eq("initiator_user_id", user_id_str).execute()
+        recipient_trades = supabase.table("trade").select("*").eq("recipient_user_id", user_id_str).execute()
 
         # Merge and dedupe
         all_trades = {t["trade_id"]: t for t in initiator_trades.data}
@@ -994,7 +995,7 @@ async def get_user_trades(
 @app.post("/trades/{trade_id}/accept", response_model=TradeWithCardsResponse)
 async def accept_trade(
     trade_id: UUID,
-    x_user_id: str = Header(..., description="User ID accepting the trade")
+    x_user_id: UUID = Header(..., description="User ID accepting the trade")
 ):
     """Accept a pending trade. Locks recipient's cards and waits for initiator confirmation."""
     # Get the trade
@@ -1006,7 +1007,7 @@ async def accept_trade(
     trade = trade_result.data[0]
 
     # Verify user is the recipient
-    if trade["recipient_user_id"] != x_user_id:
+    if trade["recipient_user_id"] != str(x_user_id):
         raise HTTPException(status_code=403, detail="Only the recipient can accept this trade")
 
     # Verify trade is pending
@@ -1044,7 +1045,7 @@ async def accept_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id,
+        actor_user_id=str(x_user_id),
         action=TradeHistoryAction.ACCEPTED,
         details={
             "other_user_id": trade["initiator_user_id"],
@@ -1062,7 +1063,7 @@ async def accept_trade(
 @app.post("/trades/{trade_id}/reject", response_model=TradeWithCardsResponse)
 async def reject_trade(
     trade_id: UUID,
-    x_user_id: str = Header(..., description="User ID rejecting the trade")
+    x_user_id: UUID = Header(..., description="User ID rejecting the trade")
 ):
     """Reject a pending trade. Unlocks initiator's escrowed cards."""
     # Get the trade
@@ -1074,7 +1075,7 @@ async def reject_trade(
     trade = trade_result.data[0]
 
     # Verify user is the recipient
-    if trade["recipient_user_id"] != x_user_id:
+    if trade["recipient_user_id"] != str(x_user_id):
         raise HTTPException(status_code=403, detail="Only the recipient can reject this trade")
 
     # Verify trade is pending
@@ -1099,7 +1100,7 @@ async def reject_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id,
+        actor_user_id=str(x_user_id),
         action=TradeHistoryAction.REJECTED,
         details={"other_user_id": trade["initiator_user_id"]}
     )
@@ -1111,7 +1112,7 @@ async def reject_trade(
 async def cancel_trade(
     trade_id: UUID,
     cancel_data: TradeCancel = None,
-    x_user_id: str = Header(..., description="User ID cancelling the trade")
+    x_user_id: UUID = Header(..., description="User ID cancelling the trade")
 ):
     """Cancel a pending trade. Only the initiator can cancel."""
     # Get the trade
@@ -1123,7 +1124,7 @@ async def cancel_trade(
     trade = trade_result.data[0]
 
     # Verify user is the initiator
-    if trade["initiator_user_id"] != x_user_id:
+    if trade["initiator_user_id"] != str(x_user_id):
         raise HTTPException(status_code=403, detail="Only the initiator can cancel this trade")
 
     # Verify trade is pending
@@ -1152,7 +1153,7 @@ async def cancel_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id,
+        actor_user_id=str(x_user_id),
         action=TradeHistoryAction.CANCELLED,
         details={
             "other_user_id": trade["recipient_user_id"],
@@ -1167,7 +1168,7 @@ async def cancel_trade(
 async def counter_offer_trade(
     trade_id: UUID,
     counter_offer: TradeCounterOffer,
-    x_user_id: str = Header(..., description="User ID creating the counter-offer")
+    x_user_id: UUID = Header(..., description="User ID creating the counter-offer")
 ):
     """Create a counter-offer to a pending trade. Roles swap - recipient becomes new initiator."""
     # Get the original trade
@@ -1179,7 +1180,7 @@ async def counter_offer_trade(
     original_trade = trade_result.data[0]
 
     # Verify user is the current recipient
-    if original_trade["recipient_user_id"] != x_user_id:
+    if original_trade["recipient_user_id"] != str(x_user_id):
         raise HTTPException(status_code=403, detail="Only the recipient can counter-offer this trade")
 
     # Verify trade is pending
@@ -1269,7 +1270,7 @@ async def counter_offer_trade(
     _record_trade_history(
         trade_id=new_trade_id,
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id,
+        actor_user_id=str(x_user_id),
         action=TradeHistoryAction.COUNTER_OFFERED,
         details={
             "other_user_id": original_trade["initiator_user_id"],
@@ -1286,7 +1287,7 @@ async def counter_offer_trade(
 @app.post("/trades/{trade_id}/confirm", response_model=TradeWithCardsResponse)
 async def confirm_trade(
     trade_id: UUID,
-    x_user_id: str = Header(..., description="User ID confirming the trade")
+    x_user_id: UUID = Header(..., description="User ID confirming the trade")
 ):
     """Confirm readiness to complete an accepted trade. Trade executes when both parties confirm."""
     # Get the trade
@@ -1296,10 +1297,11 @@ async def confirm_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
 
     trade = trade_result.data[0]
+    x_user_id_str = str(x_user_id)
 
     # Verify user is initiator or recipient
-    is_initiator = trade["initiator_user_id"] == x_user_id
-    is_recipient = trade["recipient_user_id"] == x_user_id
+    is_initiator = trade["initiator_user_id"] == x_user_id_str
+    is_recipient = trade["recipient_user_id"] == x_user_id_str
 
     if not is_initiator and not is_recipient:
         raise HTTPException(status_code=403, detail="Only trade participants can confirm")
@@ -1333,7 +1335,7 @@ async def confirm_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id,
+        actor_user_id=x_user_id_str,
         action=TradeHistoryAction.CONFIRMED,
         details={
             "other_user_id": other_user_id,
@@ -1355,7 +1357,7 @@ async def confirm_trade(
 @app.post("/trades/{trade_id}/unconfirm", response_model=TradeWithCardsResponse)
 async def unconfirm_trade(
     trade_id: UUID,
-    x_user_id: str = Header(..., description="User ID revoking confirmation")
+    x_user_id: UUID = Header(..., description="User ID revoking confirmation")
 ):
     """Revoke confirmation before both parties have confirmed."""
     # Get the trade
@@ -1365,10 +1367,11 @@ async def unconfirm_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
 
     trade = trade_result.data[0]
+    x_user_id_str = str(x_user_id)
 
     # Verify user is initiator or recipient
-    is_initiator = trade["initiator_user_id"] == x_user_id
-    is_recipient = trade["recipient_user_id"] == x_user_id
+    is_initiator = trade["initiator_user_id"] == x_user_id_str
+    is_recipient = trade["recipient_user_id"] == x_user_id_str
 
     if not is_initiator and not is_recipient:
         raise HTTPException(status_code=403, detail="Only trade participants can unconfirm")
@@ -1406,7 +1409,7 @@ async def unconfirm_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id,
+        actor_user_id=x_user_id_str,
         action=TradeHistoryAction.UNCONFIRMED,
         details={
             "other_user_id": other_user_id,
@@ -1462,17 +1465,18 @@ async def get_trade_history(trade_id: UUID):
 
 @app.get("/users/{user_id}/tradeable-cards", response_model=list[InventoryCardResponse])
 async def get_user_tradeable_cards(
-    user_id: str,
+    user_id: UUID,
     inventory_id: Optional[UUID] = Query(None, description="Filter by specific inventory"),
 ):
     """Get all tradeable cards for a user across their inventories."""
+    user_id_str = str(user_id)
     # Get user's inventories
     if inventory_id:
         inv_query = supabase.table("inventory").select("inventory_id").eq(
             "inventory_id", str(inventory_id)
-        ).eq("user_id", user_id)
+        ).eq("user_id", user_id_str)
     else:
-        inv_query = supabase.table("inventory").select("inventory_id").eq("user_id", user_id)
+        inv_query = supabase.table("inventory").select("inventory_id").eq("user_id", user_id_str)
 
     inventories = inv_query.execute()
 
