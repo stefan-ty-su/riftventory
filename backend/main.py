@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException, Query, Header
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from supabase import create_client, Client
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import UUID, uuid4
 from typing import Optional
 
@@ -40,7 +40,17 @@ from models.trade import (
     TradeHistoryListResponse,
     TradeCleanupResponse,
 )
-from datetime import timedelta
+
+from models.auth import (
+    CurrentUser,
+    UserRegister,
+    UserLogin,
+    AuthResponse,
+    UserResponse,
+    MessageResponse,
+)
+
+from auth import get_current_user, get_optional_user
 
 app = FastAPI()
 
@@ -66,6 +76,197 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+# ============== Auth Endpoints ==============
+
+@app.post("/auth/register", response_model=AuthResponse, status_code=201)
+async def register(user_data: UserRegister):
+    """
+    Register a new user with email and password.
+    Creates a Supabase auth user and returns access token.
+    """
+    try:
+        # Create user in Supabase Auth
+        auth_response = supabase.auth.sign_up({
+            "email": user_data.email,
+            "password": user_data.password,
+        })
+
+        if not auth_response.user:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to create user account"
+            )
+
+        auth_user = auth_response.user
+        session = auth_response.session
+
+        if not session:
+            raise HTTPException(
+                status_code=400,
+                detail="Account created but session not established. Please log in."
+            )
+
+        # Create user profile in our user table (lazy creation backup)
+        user_name = user_data.user_name or user_data.email.split("@")[0]
+        try:
+            profile_data = {
+                "user_id": str(auth_user.id),
+                "auth_id": str(auth_user.id),
+                "email": user_data.email,
+                "user_name": user_name,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            supabase.table("user").insert(profile_data).execute()
+        except Exception:
+            # Profile creation might fail if it already exists (race condition)
+            # The get_current_user dependency will handle lazy creation
+            pass
+
+        return AuthResponse(
+            access_token=session.access_token,
+            token_type="bearer",
+            expires_in=session.expires_in or 3600,
+            user=CurrentUser(
+                user_id=UUID(str(auth_user.id)),
+                auth_id=UUID(str(auth_user.id)),
+                email=user_data.email,
+                user_name=user_name,
+                created_at=datetime.now(timezone.utc)
+            )
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "already registered" in error_msg or "already exists" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail="A user with this email already exists"
+            )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Registration failed: {str(e)}"
+        )
+
+
+@app.post("/auth/login", response_model=AuthResponse)
+async def login(credentials: UserLogin):
+    """
+    Log in with email and password.
+    Returns access token and user information.
+    """
+    try:
+        auth_response = supabase.auth.sign_in_with_password({
+            "email": credentials.email,
+            "password": credentials.password,
+        })
+
+        if not auth_response.user or not auth_response.session:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+        auth_user = auth_response.user
+        session = auth_response.session
+
+        # Get user profile from our user table
+        result = supabase.table("user").select("*").eq(
+            "auth_id", str(auth_user.id)
+        ).execute()
+
+        if result.data:
+            user_data = result.data[0]
+            user = CurrentUser(
+                user_id=UUID(user_data["user_id"]),
+                auth_id=UUID(user_data["auth_id"]),
+                email=user_data.get("email", credentials.email),
+                user_name=user_data["user_name"],
+                created_at=user_data.get("created_at")
+            )
+        else:
+            # Lazy profile creation if it doesn't exist
+            user_name = credentials.email.split("@")[0]
+            profile_data = {
+                "user_id": str(auth_user.id),
+                "auth_id": str(auth_user.id),
+                "email": credentials.email,
+                "user_name": user_name,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            insert_result = supabase.table("user").insert(profile_data).execute()
+
+            if insert_result.data:
+                user_data = insert_result.data[0]
+                user = CurrentUser(
+                    user_id=UUID(user_data["user_id"]),
+                    auth_id=UUID(user_data["auth_id"]),
+                    email=user_data.get("email", credentials.email),
+                    user_name=user_data["user_name"],
+                    created_at=user_data.get("created_at")
+                )
+            else:
+                user = CurrentUser(
+                    user_id=UUID(str(auth_user.id)),
+                    auth_id=UUID(str(auth_user.id)),
+                    email=credentials.email,
+                    user_name=user_name,
+                    created_at=datetime.now(timezone.utc)
+                )
+
+        return AuthResponse(
+            access_token=session.access_token,
+            token_type="bearer",
+            expires_in=session.expires_in or 3600,
+            user=user
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "invalid" in error_msg or "credentials" in error_msg:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Login failed: {str(e)}"
+        )
+
+
+@app.post("/auth/logout", response_model=MessageResponse)
+async def logout(current_user: CurrentUser = Depends(get_current_user)):
+    """
+    Log out the current user.
+    Invalidates the current session on Supabase.
+    """
+    try:
+        supabase.auth.sign_out()
+        return MessageResponse(message="Successfully logged out")
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Logout failed: {str(e)}"
+        )
+
+
+@app.get("/auth/me", response_model=UserResponse)
+async def get_me(current_user: CurrentUser = Depends(get_current_user)):
+    """
+    Get the current authenticated user's profile.
+    """
+    return UserResponse(
+        user_id=current_user.user_id,
+        email=current_user.email,
+        user_name=current_user.user_name,
+        created_at=current_user.created_at
+    )
+
 
 # ============== Card Information Endpoints ==============
 @app.get("/cards", response_model=CardListResponse)
@@ -181,17 +382,19 @@ async def get_card(
 
 
     item = result.data[0]
-
     return item
     
 
 # ============== Inventory Endpoints ==============
 
 @app.post("/inventories", response_model=InventoryResponse)
-async def create_inventory(inventory: InventoryCreate):
-    """Create a new inventory for a user."""
+async def create_inventory(
+    inventory: InventoryCreate,
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """Create a new inventory for the authenticated user."""
     data = {
-        "user_id": inventory.user_id,
+        "user_id": str(current_user.user_id),
         "inventory_name": inventory.inventory_name,
         "inventory_colour": inventory.inventory_colour,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -226,14 +429,25 @@ async def get_user_inventories(user_id: UUID):
 
 
 @app.patch("/inventories/{inventory_id}", response_model=InventoryResponse)
-async def update_inventory(inventory_id: UUID, inventory: InventoryUpdate):
+async def update_inventory(
+    inventory_id: UUID,
+    inventory: InventoryUpdate,
+    current_user: CurrentUser = Depends(get_current_user)
+):
     """Update inventory metadata (name, colour)."""
+    # Verify ownership
+    existing = supabase.table("inventory").select("user_id").eq("inventory_id", str(inventory_id)).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    if existing.data[0]["user_id"] != str(current_user.user_id):
+        raise HTTPException(status_code=403, detail="You don't own this inventory")
+
     update_data = inventory.model_dump(exclude_unset=True)
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    update_data["last_updated"] = datetime.utcnow().isoformat()
+    update_data["last_updated"] = datetime.now(timezone.utc).isoformat()
 
     result = supabase.table("inventory").update(update_data).eq("inventory_id", str(inventory_id)).execute()
 
@@ -244,8 +458,18 @@ async def update_inventory(inventory_id: UUID, inventory: InventoryUpdate):
 
 
 @app.delete("/inventories/{inventory_id}", status_code=204)
-async def delete_inventory(inventory_id: UUID):
+async def delete_inventory(
+    inventory_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user)
+):
     """Delete an inventory and all its cards."""
+    # Verify ownership
+    existing = supabase.table("inventory").select("user_id").eq("inventory_id", str(inventory_id)).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    if existing.data[0]["user_id"] != str(current_user.user_id):
+        raise HTTPException(status_code=403, detail="You don't own this inventory")
+
     # Delete inventory cards first (cascade should handle this, but being explicit)
     supabase.table("inventory_card").delete().eq("inventory_id", str(inventory_id)).execute()
 
@@ -353,8 +577,19 @@ async def get_inventory_with_cards(inventory_id: UUID):
 
 
 @app.post("/inventories/{inventory_id}/cards", response_model=InventoryCardResponse, status_code=201)
-async def add_card_to_inventory(inventory_id: UUID, card: InventoryCardCreate):
+async def add_card_to_inventory(
+    inventory_id: UUID,
+    card: InventoryCardCreate,
+    current_user: CurrentUser = Depends(get_current_user)
+):
     """Add a card to an inventory or update quantity if it exists."""
+    # Verify ownership
+    inv_check = supabase.table("inventory").select("user_id").eq("inventory_id", str(inventory_id)).execute()
+    if not inv_check.data:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    if inv_check.data[0]["user_id"] != str(current_user.user_id):
+        raise HTTPException(status_code=403, detail="You don't own this inventory")
+
     # Check if card already exists in inventory
     existing = supabase.table("inventory_card").select("*").eq(
         "inventory_id", str(inventory_id)
@@ -389,8 +624,19 @@ async def add_card_to_inventory(inventory_id: UUID, card: InventoryCardCreate):
 
 
 @app.post("/inventories/{inventory_id}/cards/bulk", response_model=list[InventoryCardResponse])
-async def add_cards_bulk(inventory_id: UUID, bulk_data: InventoryCardBulkCreate):
+async def add_cards_bulk(
+    inventory_id: UUID,
+    bulk_data: InventoryCardBulkCreate,
+    current_user: CurrentUser = Depends(get_current_user)
+):
     """Add multiple cards to inventory at once."""
+    # Verify ownership
+    inv_check = supabase.table("inventory").select("user_id").eq("inventory_id", str(inventory_id)).execute()
+    if not inv_check.data:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    if inv_check.data[0]["user_id"] != str(current_user.user_id):
+        raise HTTPException(status_code=403, detail="You don't own this inventory")
+
     added_cards = []
 
     for card in bulk_data.cards:
@@ -429,9 +675,17 @@ async def add_cards_bulk(inventory_id: UUID, bulk_data: InventoryCardBulkCreate)
 async def update_inventory_card(
     inventory_id: UUID,
     card_id: str,
-    card_update: InventoryCardUpdate
+    card_update: InventoryCardUpdate,
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Update a card in the inventory."""
+    # Verify ownership
+    inv_check = supabase.table("inventory").select("user_id").eq("inventory_id", str(inventory_id)).execute()
+    if not inv_check.data:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    if inv_check.data[0]["user_id"] != str(current_user.user_id):
+        raise HTTPException(status_code=403, detail="You don't own this inventory")
+
     update_data = card_update.model_dump(exclude_unset=True)
 
     if not update_data:
@@ -456,9 +710,17 @@ async def update_inventory_card(
 async def adjust_card_quantity(
     inventory_id: UUID,
     card_id: str,
-    adjust: InventoryCardAdjust
+    adjust: InventoryCardAdjust,
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Adjust card quantity by adding or removing copies."""
+    # Verify ownership
+    inv_check = supabase.table("inventory").select("user_id").eq("inventory_id", str(inventory_id)).execute()
+    if not inv_check.data:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    if inv_check.data[0]["user_id"] != str(current_user.user_id):
+        raise HTTPException(status_code=403, detail="You don't own this inventory")
+
     # Get current card
     result = supabase.table("inventory_card").select("*").eq(
         "inventory_id", str(inventory_id)
@@ -505,8 +767,19 @@ async def adjust_card_quantity(
 
 
 @app.delete("/inventories/{inventory_id}/cards/{card_id}", status_code=204)
-async def remove_card_from_inventory(inventory_id: UUID, card_id: str):
+async def remove_card_from_inventory(
+    inventory_id: UUID,
+    card_id: str,
+    current_user: CurrentUser = Depends(get_current_user)
+):
     """Remove a card completely from the inventory."""
+    # Verify ownership
+    inv_check = supabase.table("inventory").select("user_id").eq("inventory_id", str(inventory_id)).execute()
+    if not inv_check.data:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    if inv_check.data[0]["user_id"] != str(current_user.user_id):
+        raise HTTPException(status_code=403, detail="You don't own this inventory")
+
     result = supabase.table("inventory_card").delete().eq(
         "inventory_id", str(inventory_id)
     ).eq("card_id", card_id).execute()
@@ -822,9 +1095,11 @@ async def _execute_trade(trade_id: str, trade: dict) -> dict:
 @app.post("/trades", response_model=TradeWithCardsResponse, status_code=201)
 async def create_trade(
     trade: TradeCreate,
-    x_user_id: UUID = Header(..., description="User ID of the trade initiator")
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Create a new trade offer. Can be used for trades between users or transfers between own inventories."""
+    user_id = current_user.user_id
+
     # Verify initiator owns the initiator inventory
     inv_result = supabase.table("inventory").select("user_id").eq(
         "inventory_id", str(trade.initiator_inventory_id)
@@ -832,7 +1107,7 @@ async def create_trade(
 
     if not inv_result.data:
         raise HTTPException(status_code=404, detail="Initiator inventory not found")
-    if inv_result.data[0]["user_id"] != str(x_user_id):
+    if inv_result.data[0]["user_id"] != str(user_id):
         raise HTTPException(status_code=403, detail="You don't own this inventory")
 
     # Verify recipient inventory exists
@@ -846,7 +1121,7 @@ async def create_trade(
         raise HTTPException(status_code=400, detail="Recipient inventory doesn't belong to recipient user")
 
     # Check if this is a self-transfer (same user, different inventories)
-    is_self_transfer = (x_user_id == trade.recipient_user_id)
+    is_self_transfer = (user_id == trade.recipient_user_id)
 
     # Validate escrow cards are available (skip tradeable check for self-transfers)
     _validate_cards_available(str(trade.initiator_inventory_id), trade.escrow_cards, skip_tradeable_check=is_self_transfer)
@@ -864,7 +1139,7 @@ async def create_trade(
     trade_data = {
         "trade_id": trade_id,
         "root_trade_id": trade_id,
-        "initiator_user_id": str(x_user_id),
+        "initiator_user_id": str(user_id),
         "initiator_inventory_id": str(trade.initiator_inventory_id),
         "recipient_user_id": str(trade.recipient_user_id),
         "recipient_inventory_id": str(trade.recipient_inventory_id),
@@ -900,7 +1175,7 @@ async def create_trade(
     _record_trade_history(
         trade_id=trade_id,
         root_trade_id=trade_id,
-        actor_user_id=str(x_user_id),
+        actor_user_id=str(user_id),
         action=TradeHistoryAction.CREATED,
         details={
             "other_user_id": str(trade.recipient_user_id),
@@ -914,7 +1189,7 @@ async def create_trade(
         return await _execute_trade(trade_id, trade_result.data[0])
 
     # Get user names for response
-    initiator = supabase.table("user").select("user_name").eq("user_id", x_user_id).execute()
+    initiator = supabase.table("user").select("user_name").eq("user_id", str(user_id)).execute()
     recipient = supabase.table("user").select("user_name").eq("user_id", trade.recipient_user_id).execute()
 
     return {
@@ -995,9 +1270,11 @@ async def get_user_trades(
 @app.post("/trades/{trade_id}/accept", response_model=TradeWithCardsResponse)
 async def accept_trade(
     trade_id: UUID,
-    x_user_id: UUID = Header(..., description="User ID accepting the trade")
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Accept a pending trade. Locks recipient's cards and waits for initiator confirmation."""
+    user_id = current_user.user_id
+
     # Get the trade
     trade_result = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
 
@@ -1007,7 +1284,7 @@ async def accept_trade(
     trade = trade_result.data[0]
 
     # Verify user is the recipient
-    if trade["recipient_user_id"] != str(x_user_id):
+    if trade["recipient_user_id"] != str(user_id):
         raise HTTPException(status_code=403, detail="Only the recipient can accept this trade")
 
     # Verify trade is pending
@@ -1045,7 +1322,7 @@ async def accept_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=str(x_user_id),
+        actor_user_id=str(user_id),
         action=TradeHistoryAction.ACCEPTED,
         details={
             "other_user_id": trade["initiator_user_id"],
@@ -1063,9 +1340,11 @@ async def accept_trade(
 @app.post("/trades/{trade_id}/reject", response_model=TradeWithCardsResponse)
 async def reject_trade(
     trade_id: UUID,
-    x_user_id: UUID = Header(..., description="User ID rejecting the trade")
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Reject a pending trade. Unlocks initiator's escrowed cards."""
+    user_id = current_user.user_id
+
     # Get the trade
     trade_result = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
 
@@ -1075,7 +1354,7 @@ async def reject_trade(
     trade = trade_result.data[0]
 
     # Verify user is the recipient
-    if trade["recipient_user_id"] != str(x_user_id):
+    if trade["recipient_user_id"] != str(user_id):
         raise HTTPException(status_code=403, detail="Only the recipient can reject this trade")
 
     # Verify trade is pending
@@ -1100,7 +1379,7 @@ async def reject_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=str(x_user_id),
+        actor_user_id=str(user_id),
         action=TradeHistoryAction.REJECTED,
         details={"other_user_id": trade["initiator_user_id"]}
     )
@@ -1112,9 +1391,11 @@ async def reject_trade(
 async def cancel_trade(
     trade_id: UUID,
     cancel_data: TradeCancel = None,
-    x_user_id: UUID = Header(..., description="User ID cancelling the trade")
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Cancel a pending trade. Only the initiator can cancel."""
+    user_id = current_user.user_id
+
     # Get the trade
     trade_result = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
 
@@ -1124,7 +1405,7 @@ async def cancel_trade(
     trade = trade_result.data[0]
 
     # Verify user is the initiator
-    if trade["initiator_user_id"] != str(x_user_id):
+    if trade["initiator_user_id"] != str(user_id):
         raise HTTPException(status_code=403, detail="Only the initiator can cancel this trade")
 
     # Verify trade is pending
@@ -1153,7 +1434,7 @@ async def cancel_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=str(x_user_id),
+        actor_user_id=str(user_id),
         action=TradeHistoryAction.CANCELLED,
         details={
             "other_user_id": trade["recipient_user_id"],
@@ -1168,9 +1449,11 @@ async def cancel_trade(
 async def counter_offer_trade(
     trade_id: UUID,
     counter_offer: TradeCounterOffer,
-    x_user_id: UUID = Header(..., description="User ID creating the counter-offer")
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Create a counter-offer to a pending trade. Roles swap - recipient becomes new initiator."""
+    user_id = current_user.user_id
+
     # Get the original trade
     trade_result = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
 
@@ -1180,7 +1463,7 @@ async def counter_offer_trade(
     original_trade = trade_result.data[0]
 
     # Verify user is the current recipient
-    if original_trade["recipient_user_id"] != str(x_user_id):
+    if original_trade["recipient_user_id"] != str(user_id):
         raise HTTPException(status_code=403, detail="Only the recipient can counter-offer this trade")
 
     # Verify trade is pending
@@ -1270,7 +1553,7 @@ async def counter_offer_trade(
     _record_trade_history(
         trade_id=new_trade_id,
         root_trade_id=root_trade_id,
-        actor_user_id=str(x_user_id),
+        actor_user_id=str(user_id),
         action=TradeHistoryAction.COUNTER_OFFERED,
         details={
             "other_user_id": original_trade["initiator_user_id"],
@@ -1287,9 +1570,11 @@ async def counter_offer_trade(
 @app.post("/trades/{trade_id}/confirm", response_model=TradeWithCardsResponse)
 async def confirm_trade(
     trade_id: UUID,
-    x_user_id: UUID = Header(..., description="User ID confirming the trade")
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Confirm readiness to complete an accepted trade. Trade executes when both parties confirm."""
+    user_id = current_user.user_id
+
     # Get the trade
     trade_result = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
 
@@ -1297,11 +1582,11 @@ async def confirm_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
 
     trade = trade_result.data[0]
-    x_user_id_str = str(x_user_id)
+    user_id_str = str(user_id)
 
     # Verify user is initiator or recipient
-    is_initiator = trade["initiator_user_id"] == x_user_id_str
-    is_recipient = trade["recipient_user_id"] == x_user_id_str
+    is_initiator = trade["initiator_user_id"] == user_id_str
+    is_recipient = trade["recipient_user_id"] == user_id_str
 
     if not is_initiator and not is_recipient:
         raise HTTPException(status_code=403, detail="Only trade participants can confirm")
@@ -1335,7 +1620,7 @@ async def confirm_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id_str,
+        actor_user_id=user_id_str,
         action=TradeHistoryAction.CONFIRMED,
         details={
             "other_user_id": other_user_id,
@@ -1357,9 +1642,11 @@ async def confirm_trade(
 @app.post("/trades/{trade_id}/unconfirm", response_model=TradeWithCardsResponse)
 async def unconfirm_trade(
     trade_id: UUID,
-    x_user_id: UUID = Header(..., description="User ID revoking confirmation")
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """Revoke confirmation before both parties have confirmed."""
+    user_id = current_user.user_id
+
     # Get the trade
     trade_result = supabase.table("trade").select("*").eq("trade_id", str(trade_id)).execute()
 
@@ -1367,11 +1654,11 @@ async def unconfirm_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
 
     trade = trade_result.data[0]
-    x_user_id_str = str(x_user_id)
+    user_id_str = str(user_id)
 
     # Verify user is initiator or recipient
-    is_initiator = trade["initiator_user_id"] == x_user_id_str
-    is_recipient = trade["recipient_user_id"] == x_user_id_str
+    is_initiator = trade["initiator_user_id"] == user_id_str
+    is_recipient = trade["recipient_user_id"] == user_id_str
 
     if not is_initiator and not is_recipient:
         raise HTTPException(status_code=403, detail="Only trade participants can unconfirm")
@@ -1409,7 +1696,7 @@ async def unconfirm_trade(
     _record_trade_history(
         trade_id=str(trade_id),
         root_trade_id=root_trade_id,
-        actor_user_id=x_user_id_str,
+        actor_user_id=user_id_str,
         action=TradeHistoryAction.UNCONFIRMED,
         details={
             "other_user_id": other_user_id,
