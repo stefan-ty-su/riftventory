@@ -2,7 +2,7 @@ fastapi
 uvicorn
 supabase
 python-dotenv
-pydantic
+pydantic[email]
 pytest
 pytest-asyncio
 pytest-cov
