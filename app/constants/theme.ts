@@ -71,10 +71,34 @@ export const Colors = {
   success: '#34C759',
   error: '#FF453A',
   warning: '#FFD60A',
-  
+
   // Gradients
   gradientStart: '#1A1A1E',
   gradientEnd: '#0A0A0B',
+
+  // Sidebar
+  sidebarBackground: '#0D0D0E',
+  sidebarItemHover: '#1A1A1E',
+  sidebarItemActive: '#1F1F23',
+  sidebarBorder: '#1C1C1E',
+};
+
+// Sidebar dimensions and spacing
+export const Sidebar = {
+  // Widths
+  expandedWidth: 240,
+  collapsedWidth: 72,
+
+  // Item dimensions
+  itemHeight: 48,
+  itemPadding: 12,
+  itemGap: 4,
+  iconSize: 24,
+
+  // Section spacing
+  headerHeight: 64,
+  sectionGap: 24,
+  bottomSectionHeight: 120,
 };
 
 export const Fonts = Platform.select({
