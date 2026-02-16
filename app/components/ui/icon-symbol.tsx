@@ -18,6 +18,18 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  // Sidebar navigation icons
+  'rectangle.grid.2x2.fill': 'grid-view',
+  'archivebox.fill': 'inventory-2',
+  'arrow.left.arrow.right': 'swap-horiz',
+  'magnifyingglass': 'search',
+  'person.circle.fill': 'account-circle',
+  'gearshape.fill': 'settings',
+  // Mobile header
+  'line.3.horizontal': 'menu',
+  // Sidebar collapse toggle
+  'chevron.left': 'chevron-left',
+  'sidebar.left': 'menu-open',
 } as IconMapping;
 
 /**

@@ -35,6 +35,7 @@ interface CardItemProps {
   size?: 'small' | 'medium' | 'large';
   showGlow?: boolean;
   showInfo?: boolean; // Show card name and domain below image
+  containerWidth?: number; // Override screen width for sidebar layouts
 }
 
 // Rarity to color mapping
@@ -88,18 +89,20 @@ const CardItem: React.FC<CardItemProps> = ({
   size = 'small',
   showGlow = true,
   showInfo = true,
+  containerWidth,
 }) => {
   const [isPressed, setIsPressed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
 
   const { width: screenWidth } = useWindowDimensions();
+  const effectiveWidth = containerWidth ?? screenWidth;
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
-  const sizeConfig = getSizeConfig(size, screenWidth);
+  const sizeConfig = getSizeConfig(size, effectiveWidth);
   const rarityColor = getRarityColor(card.card_rarity);
   const domainColors = getDomainColor(card.card_domain);
   const allDomainColors = getDomainColors(card.card_domain);
